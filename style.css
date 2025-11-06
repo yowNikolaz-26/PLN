@@ -4,10 +4,10 @@
   --color-fondo-secundario: #ffffff;
   --color-borde: #e2e8f0;
   
-  --color-primario: #ff6b6b;     /* Rojo tomate vibrante */
+  --color-primario: #ff6b6b;
   --color-primario-hover: #ff5252;
-  --color-secundario: #4ecdc4;   /* Turquesa menta */
-  --color-acento: #ffe66d;       /* Amarillo limón */
+  --color-secundario: #4ecdc4;
+  --color-acento: #ffe66d;
   
   --color-texto-principal: #2d3748;
   --color-texto-secundario: #718096;
@@ -32,14 +32,16 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 100vh;
-  padding: 16px;
+  min-height: 100vh;
+  padding: 10px;
+  overflow: hidden;
 }
 
 #chat-container {
   width: 100%;
   max-width: 600px;
-  height: 90vh;
+  height: 95vh;
+  max-height: 800px;
   background-color: var(--color-fondo-secundario);
   border-radius: 20px;
   border: none;
@@ -171,26 +173,29 @@ body {
 
 #button-bar {
   display: flex;
-  padding: 12px;
+  padding: 10px 12px;
   background: white;
   border-top: 2px solid #e2e8f0;
   overflow-x: auto;
-  gap: 10px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .action-btn {
   flex-grow: 1;
   border: none;
-  padding: 12px 16px;
+  padding: 10px 14px;
   margin: 0;
   border-radius: 12px;
   cursor: pointer;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   transition: all 0.3s ease;
   white-space: nowrap;
   color: white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
+  min-width: fit-content;
 }
 
 .action-btn:hover:not(:disabled) {
@@ -215,10 +220,11 @@ body {
 
 #input-container {
   display: flex;
-  padding: 16px;
+  padding: 12px;
   border-top: 2px solid #e2e8f0;
   background: white;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 #user-input {
