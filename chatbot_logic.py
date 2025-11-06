@@ -66,7 +66,7 @@ class ChatbotLogic:
             self.translator = None
         
         # Cargar GPT2 como backup con configuración optimizada
-        self.gpt2_cargado = False
+        self.gpt2_cargado = True
         if TRANSFORMERS_DISPONIBLE:
             try:
                 print("🔄 Cargando GPT2 como backup...")
@@ -94,7 +94,7 @@ class ChatbotLogic:
         # Sinónimos expandidos
         self.sinonimos = {
             'carne guisada': {
-                'sinonimos': ['estofado', 'guiso', 'guisado', 'carne estofada', 'cocido', 'beef stew'],
+                'sinonimos': ['estofado', 'guiso', 'guisado', 'carne estofada', 'cocido', 'beef stew','carnecita'],
                 'palabras_clave': ['carne', 'res', 'vaca', 'beef']
             },
             'pasta carbonara': {
@@ -102,7 +102,7 @@ class ChatbotLogic:
                 'palabras_clave': ['pasta', 'italiano', 'espagueti']
             },
             'pollo asado': {
-                'sinonimos': ['pollo', 'rostizado', 'gallina', 'ave', 'chicken', 'roast chicken'],
+                'sinonimos': ['pollo', 'rostizado', 'gallina', 'ave', 'chicken', 'roast chicken','pollito'],
                 'palabras_clave': ['pollo', 'ave', 'chicken']
             },
             'tacos': {
