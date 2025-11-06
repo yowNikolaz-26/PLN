@@ -1,8 +1,18 @@
-# chatbot_logic.py - VERSIÓN CON TheMealDB API + GPT2 BACKUP
+# chatbot_logic.py - VERSIÓN FINAL (Traducción + PLN Fuerte + Sentimientos)
 import random
 import requests
 import json
 import re
+
+# --- CAMBIO: Importar la nueva librería de traducción ---
+try:
+    from deep_translator import GoogleTranslator
+    DEEP_TRANSLATOR_DISPONIBLE = True
+    print("✅ Deep Translator (para traducir) cargado")
+except ImportError:
+    DEEP_TRANSLATOR_DISPONIBLE = False
+    print("⚠️ deep-translator no está instalado. Las recetas saldrán en inglés.")
+    print("⚠️ Para arreglarlo, corre: python -m pip install deep-translator")
 
 # --- Importaciones PLN ---
 try:
@@ -45,10 +55,17 @@ class ChatbotLogic:
         self.ultimo_sentimiento = "NEU"
         self.ultima_receta = None
         
-        # API como principal
         self.modelo_activo = "TheMealDB API + GPT2 Backup"
         self.api_disponible = True
         print(f"✅ {self.modelo_activo} lista")
+        
+        # --- CAMBIO: Crear el objeto traductor ---
+        if DEEP_TRANSLATOR_DISPONIBLE:
+            # Creamos una instancia del traductor (de inglés a español)
+            self.translator = GoogleTranslator(source='en', target='es')
+        else:
+            self.translator = None
+        # --- FIN CAMBIO ---
         
         # Cargar GPT2 como backup (opcional)
         self.gpt2_cargado = False
@@ -72,7 +89,7 @@ class ChatbotLogic:
         else:
             self.analyzer = None
             
-        # Sinónimos
+        # Sinónimos (tu diccionario original)
         self.sinonimos = {
             'carne guisada': {
                 'sinonimos': ['estofado', 'guiso', 'guisado', 'carne estofada', 'cocido', 'beef stew'],
@@ -96,7 +113,7 @@ class ChatbotLogic:
             }
         }
         
-        # Recetas internas (básicas)
+        # Recetas internas (tu diccionario original)
         self.recetas = {
             'pasta carbonara': {
                 'nombre': 'Pasta Carbonara',
@@ -165,26 +182,64 @@ class ChatbotLogic:
             }
         }
 
-    # --- PLN ---
+    # --- CAMBIO: Nueva función helper para traducir ---
+    def _traducir(self, texto):
+        """Traduce un texto si el traductor está disponible"""
+        if self.translator and texto:
+            try:
+                # Usamos el traductor para pasar de 'en' a 'es'
+                return self.translator.translate(texto)
+            except Exception as e:
+                print(f"⚠️ Error de traducción: {e}")
+                return f"[Inglés] {texto}" # Fallback si la traducción falla
+        return texto # Devuelve el original si no hay traductor
+
+    # --- PLN (Funciones de PLN, Lematización y POS mejoradas) ---
     def tokenizar(self, texto):
         return word_tokenize(texto.lower())
 
     def lematizar_simple(self, tokens):
+        # --- CAMBIO: Diccionario de lemas expandido ---
         lemas_dict = {
             'cocino': 'cocinar', 'guisada': 'guisar', 'fideos': 'fideo',
             'tacos': 'taco', 'arepas': 'arepa', 'quiero': 'querer',
-            'dame': 'dar', 'estoy': 'estar'
+            'dame': 'dar', 'estoy': 'estar',
+            'das': 'dar', 'doy': 'dar', 'hago': 'hacer', 'haces': 'hacer',
+            'soy': 'ser', 'eres': 'ser', 'es': 'ser',
+            'necesito': 'necesitar', 'busco': 'buscar'
         }
         return [lemas_dict.get(token, token) for token in tokens]
 
     def pos_tagging_simple(self, tokens):
+        # --- CAMBIO: Diccionario de POS tagging expandido ---
         pos_dict = {
-            'cocinar': 'VERB', 'carne': 'NOUN', 'pasta': 'NOUN',
-            'pollo': 'NOUN', 'taco': 'NOUN', 'arepa': 'NOUN'
+            # Verbos
+            'cocinar': 'VERB', 'guisar': 'VERB', 'preparar': 'VERB', 'querer': 'VERB',
+            'dar': 'VERB', 'hacer': 'VERB', 'tener': 'VERB', 'ser': 'VERB', 
+            'estar': 'VERB', 'buscar': 'VERB', 'necesitar': 'VERB', 'comer': 'VERB',
+            
+            # Sustantivos (Comida principal)
+            'carne': 'NOUN', 'pasta': 'NOUN', 'pollo': 'NOUN', 'taco': 'NOUN', 
+            'arepa': 'NOUN', 'fideo': 'NOUN', 'pescado': 'NOUN', 'arroz': 'NOUN',
+            'sopa': 'NOUN', 'ensalada': 'NOUN', 'pizza': 'NOUN', 'hamburguesa': 'NOUN',
+            
+            # Pronombres
+            'me': 'PRON', 'te': 'PRON', 'se': 'PRON', 'yo': 'PRON', 'tu': 'PRON', 'él': 'PRON',
+            
+            # Determinantes (Artículos)
+            'un': 'DET', 'una': 'DET', 'el': 'DET', 'la': 'DET', 'los': 'DET', 'las': 'DET',
+            
+            # Preposiciones
+            'de': 'PREP', 'con': 'PREP', 'para': 'PREP', 'por': 'PREP', 'en': 'PREP', 'a': 'PREP',
+            
+            # Conjunciones y Adverbios
+            'y': 'CONJ', 'o': 'CONJ', 'no': 'ADV', 'como': 'ADV', 'qué': 'PRON'
         }
+        # Cualquier palabra no encontrada (ej. "pescado") será 'NOUN' por defecto
         return [(token, pos_dict.get(token, 'NOUN')) for token in tokens]
 
     def extraer_comida(self, pos_tags):
+        # Extrae SOLO las palabras etiquetadas como 'NOUN'
         comida_tokens = [token for token, tag in pos_tags if tag == 'NOUN']
         return " ".join(comida_tokens) if comida_tokens else ""
 
@@ -243,294 +298,143 @@ class ChatbotLogic:
         tokens = self.tokenizar(mensaje)
         lemas = self.lematizar_simple(tokens)
         pos_tags = self.pos_tagging_simple(lemas)
-        pln_info = f"📊 PLN: Tokens: {tokens[:4]}... | Lemas: {lemas[:4]}... | POS: {pos_tags[:3]}..."
-        return pln_info, tokens, lemas, pos_tags
+        # Devolvemos los tokens, lemas y pos_tags para que 'procesar_mensaje' los use
+        return tokens, lemas, pos_tags # Quitamos pln_info
 
-    # --- API TheMealDB ---
+    # --- API TheMealDB (Con Traducción) ---
     def traducir_a_ingles(self, texto_es):
-        """Traduce términos comunes español → inglés para la API"""
-        # Palabras a ignorar (verbos comunes)
-        ignorar = ['dar', 'dame', 'quiero', 'preparar', 'hacer', 'cocinar', 
-                   'buscar', 'necesito', 'querer', 'como', 'de', 'un', 'una',
-                   'el', 'la', 'los', 'las', 'para', 'con']
-        
-        traducciones = {
-            # Comidas
-            'pollo': 'chicken',
-            'carne': 'beef',
-            'res': 'beef',
-            'cerdo': 'pork',
-            'pescado': 'fish',
-            'camarones': 'shrimp',
-            'arroz': 'rice',
-            'pasta': 'pasta',
-            'sopa': 'soup',
-            'ensalada': 'salad',
-            'pizza': 'pizza',
-            'hamburguesa': 'burger',
-            'tacos': 'tacos',
-            'sandwich': 'sandwich',
-            'pan': 'bread',
-            'pastel': 'cake',
-            'galletas': 'cookies',
-            'helado': 'ice cream',
-            'tarta': 'pie',
-            
-            # Platos específicos
-            'guisado': 'stew',
-            'estofado': 'stew',
-            'asado': 'roast',
-            'frito': 'fried',
-            'horneado': 'baked',
-            'a la parrilla': 'grilled',
-            
-            # Postres
-            'postre': 'dessert',
-            'dulce': 'sweet',
-            'chocolate': 'chocolate',
-            
-            # Bebidas
-            'cafe': 'coffee',
-            'café': 'coffee',
-            'te': 'tea',
-            'té': 'tea',
-            'jugo': 'juice',
-            'agua': 'water',
-            
-            # Otros
-            'desayuno': 'breakfast',
-            'almuerzo': 'lunch',
-            'cena': 'dinner',
-            'rapido': 'quick',
-            'rápido': 'quick',
-            'facil': 'easy',
-            'fácil': 'easy'
-        }
-        
+        # (Tu función de traducir_a_ingles se queda igual)
+        ignorar = ['dar', 'dame', 'quiero', 'preparar', 'hacer', 'cocinar', 'buscar', 'necesito', 'querer', 'como', 'de', 'un', 'una', 'el', 'la', 'los', 'las', 'para', 'con', 'comer', 'por', 'favor']
+        traducciones = {'pollo': 'chicken', 'carne': 'beef', 'res': 'beef', 'cerdo': 'pork', 'pescado': 'fish', 'camarones': 'shrimp', 'arroz': 'rice', 'pasta': 'pasta', 'sopa': 'soup', 'ensalada': 'salad', 'pizza': 'pizza', 'hamburguesa': 'burger', 'tacos': 'tacos', 'sandwich': 'sandwich', 'pan': 'bread', 'pastel': 'cake', 'galletas': 'cookies', 'helado': 'ice cream', 'tarta': 'pie', 'guisado': 'stew', 'estofado': 'stew', 'asado': 'roast', 'frito': 'fried', 'horneado': 'baked', 'a la parrilla': 'grilled', 'postre': 'dessert', 'dulce': 'sweet', 'chocolate': 'chocolate', 'cafe': 'coffee', 'café': 'coffee', 'te': 'tea', 'té': 'tea', 'jugo': 'juice', 'agua': 'water', 'desayuno': 'breakfast', 'almuerzo': 'lunch', 'cena': 'dinner', 'rapido': 'quick', 'rápido': 'quick', 'facil': 'easy', 'fácil': 'easy'}
         texto_lower = texto_es.lower().strip()
-        
-        # Buscar traducción exacta primero
-        if texto_lower in traducciones:
-            return traducciones[texto_lower]
-        
-        # Dividir en palabras y filtrar
-        palabras = texto_lower.split()
-        palabras_filtradas = [p for p in palabras if p not in ignorar]
-        
-        # Si quedó vacío, usar la última palabra original
-        if not palabras_filtradas:
-            palabras_filtradas = [palabras[-1]] if palabras else [texto_lower]
-        
-        # Traducir cada palabra
+        if texto_lower in traducciones: return traducciones[texto_lower]
+        palabras = texto_lower.split(); palabras_filtradas = [p for p in palabras if p not in ignorar]
+        if not palabras_filtradas: palabras_filtradas = [palabras[-1]] if palabras else [texto_lower]
         palabras_traducidas = [traducciones.get(p, p) for p in palabras_filtradas]
-        
         return ' '.join(palabras_traducidas)
     
     def buscar_receta_externa(self, consulta):
-        """Busca en TheMealDB API con múltiples intentos"""
+        """Busca en TheMealDB API y AHORA TRADUCE los resultados"""
         respuestas = []
         
-        # Traducir automáticamente
         consulta_en = self.traducir_a_ingles(consulta)
         
         if consulta != consulta_en:
             respuestas.append(self._crear_respuesta(
                 f"🌐 Traduciendo '{consulta}' → '{consulta_en}'...", "info"))
         
-        # Lista de búsquedas alternativas (de más específica a más general)
+        # (Lógica de búsqueda alternativa sin cambios)
         terminos_busqueda = [consulta_en]
-        
-        # Agregar variantes si la búsqueda original falla
         palabra_principal = consulta_en.split()[0] if consulta_en else consulta
+        alternativas_api = {'beef stew': ['beef', 'stew'], 'beef': ['beef'], 'chicken roast': ['chicken', 'roast chicken'], 'pork': ['pork'], 'fish': ['fish', 'salmon'], 'soup': ['soup'], 'stew': ['beef', 'stew'], 'roast': ['chicken', 'beef']}
+        if consulta_en in alternativas_api: terminos_busqueda.extend(alternativas_api[consulta_en])
+        elif palabra_principal in alternativas_api: terminos_busqueda.extend(alternativas_api[palabra_principal])
         
-        # Mapeo de términos problemáticos a alternativas que SÍ funcionan en la API
-        alternativas_api = {
-            'beef stew': ['beef', 'stew'],
-            'beef': ['beef'],
-            'chicken roast': ['chicken', 'roast chicken'],
-            'pork': ['pork'],
-            'fish': ['fish', 'salmon'],
-            'soup': ['soup'],
-            'stew': ['beef', 'stew'],
-            'roast': ['chicken', 'beef']
-        }
-        
-        # Buscar alternativas
-        if consulta_en in alternativas_api:
-            terminos_busqueda.extend(alternativas_api[consulta_en])
-        elif palabra_principal in alternativas_api:
-            terminos_busqueda.extend(alternativas_api[palabra_principal])
-        
-        # Intentar cada término hasta encontrar resultados
         for termino in terminos_busqueda:
             try:
                 url = f"https://www.themealdb.com/api/json/v1/1/search.php?s={termino}"
                 print(f"🔗 Intentando: {url}")
-                
-                response = requests.get(url, timeout=10)
-                response.raise_for_status()
-                data = response.json()
+                response = requests.get(url, timeout=10); response.raise_for_status(); data = response.json()
                 
                 if data and data.get('meals'):
-                    # ¡Encontramos resultados!
                     if termino != consulta_en:
-                        respuestas.append(self._crear_respuesta(
-                            f"✅ Encontré resultados buscando '{termino}'", "info"))
+                        respuestas.append(self._crear_respuesta(f"✅ Encontré resultados buscando '{termino}'", "info"))
                     
                     receta = data['meals'][0]
-                    nombre = receta.get('strMeal', 'Receta encontrada')
-                    categoria = receta.get('strCategory', 'N/A')
-                    area = receta.get('strArea', 'N/A')
+                    
+                    # --- CAMBIO: Traducir todos los campos ---
+                    nombre = self._traducir(receta.get('strMeal', 'Receta encontrada'))
+                    categoria = self._traducir(receta.get('strCategory', 'N/A'))
+                    area = self._traducir(receta.get('strArea', 'N/A'))
                     
                     respuestas.append(self._crear_respuesta(
                         f"✅ {nombre}\n📂 {categoria} | 🌍 {area}", "ia"))
                     
-                    # Ingredientes
-                    ingredientes = []
+                    # Ingredientes (traducidos en bloque)
+                    ingredientes_en_lista = []
                     for i in range(1, 21):
                         ing = receta.get(f'strIngredient{i}')
                         med = receta.get(f'strMeasure{i}')
                         if ing and ing.strip():
-                            ingredientes.append(f" • {med.strip()} {ing.strip()}")
+                            ingredientes_en_lista.append(f" • {med.strip()} {ing.strip()}")
                     
-                    if ingredientes:
+                    if ingredientes_en_lista:
+                        ingredientes_en_texto = "\n".join(ingredientes_en_lista)
+                        ingredientes_es_texto = self._traducir(ingredientes_en_texto)
                         respuestas.append(self._crear_respuesta(
-                            "📋 INGREDIENTES:\n" + "\n".join(ingredientes), "ia"))
+                            "📋 INGREDIENTES:\n" + ingredientes_es_texto, "ia"))
                     
-                    # Pasos (limitados)
-                    instrucciones = receta.get('strInstructions', '')
-                    if instrucciones:
-                        pasos_cortos = instrucciones[:800] + "..." if len(instrucciones) > 800 else instrucciones
+                    # Pasos (traducidos)
+                    instrucciones_en = receta.get('strInstructions', '')
+                    if instrucciones_en:
+                        instrucciones_es = self._traducir(instrucciones_en)
+                        pasos_cortos = instrucciones_es[:800] + "..." if len(instrucciones_es) > 800 else instrucciones_es
                         respuestas.append(self._crear_respuesta(
                             f"📝 PREPARACIÓN:\n{pasos_cortos}", "ia"))
-                    
-                    # Imagen
-                    imagen = receta.get('strMealThumb')
+                    # --- FIN CAMBIO ---
+
+                    imagen = receta.get('strMealThumb');
                     if imagen:
-                        respuestas.append(self._crear_respuesta(
-                            f"🖼️ Imagen: {imagen}", "info"))
+                        respuestas.append(self._crear_respuesta(f"🖼️ Imagen: {imagen}", "info"))
                     
-                    return respuestas  # Éxito, salir
+                    return respuestas
                 
             except Exception as e:
-                print(f"❌ Error con '{termino}': {e}")
-                continue
+                print(f"❌ Error con '{termino}': {e}"); continue
         
-        # Si ninguna búsqueda funcionó
-        respuestas.append(self._crear_respuesta(
-            f"⚠️ No encontré '{consulta_en}' en TheMealDB.", "warning"))
+        # (Fallback si no se encuentra nada)
+        respuestas.append(self._crear_respuesta(f"⚠️ No encontré '{consulta_en}' en TheMealDB.", "warning"))
+        respuestas.append(self._crear_respuesta("💡 Palabras que funcionan bien:\n • chicken, beef, pork, fish, salmon\n • pasta, pizza, rice, soup\n • cake, cookies, bread, pie", "info"))
         
-        # Sugerir palabras que SÍ funcionan
-        respuestas.append(self._crear_respuesta(
-            "💡 Palabras que funcionan bien:\n"
-            " • chicken, beef, pork, fish, salmon\n"
-            " • pasta, pizza, rice, soup\n"
-            " • cake, cookies, bread, pie", "info"))
-        
-        # Fallback a GPT2
         if self.gpt2_cargado:
-            respuestas.append(self._crear_respuesta(
-                "🤖 Generando con GPT2 como alternativa...", "info"))
+            respuestas.append(self._crear_respuesta("🤖 Generando con GPT2 como alternativa...", "info"))
             respuestas.extend(self.generar_con_gpt2(consulta))
         
         return respuestas
 
+    # (generar_con_gpt2 y botones de generación se quedan igual)
     def generar_con_gpt2(self, consulta):
-        """Genera receta con GPT2 cuando la API falla"""
         respuestas = []
-        respuestas.append(self._crear_respuesta(
-            "🤖 Usando GPT2 para generar información básica...", "info"))
-        
+        respuestas.append(self._crear_respuesta("🤖 Usando GPT2 para generar información básica...", "info"))
         try:
-            # Prompt con mejor estructura para GPT2
             prompt = f"Receta de {consulta}. Ingredientes necesarios:\n• Primer ingrediente:"
-            
-            resultado = self.generador(
-                prompt,
-                max_length=100,
-                temperature=0.7,
-                top_p=0.85,
-                do_sample=True,
-                num_return_sequences=1
-            )[0]['generated_text']
-            
-            # Advertencia sobre calidad
-            respuestas.append(self._crear_respuesta(
-                "⚠️ GPT2 puede generar información imprecisa. Verifica antes de cocinar.", "warning"))
-            
-            respuestas.append(self._crear_respuesta(
-                f"📖 Información generada:\n\n{resultado}", "ia"))
+            resultado = self.generador(prompt, max_length=100, temperature=0.7, top_p=0.85, do_sample=True, num_return_sequences=1)[0]['generated_text']
+            respuestas.append(self._crear_respuesta("⚠️ GPT2 puede generar información imprecisa. Verifica antes de cocinar.", "warning"))
+            respuestas.append(self._crear_respuesta(f"📖 Información generada:\n\n{resultado}", "ia"))
         except Exception as e:
-            respuestas.append(self._crear_respuesta(
-                f"❌ Error con GPT2: {str(e)[:100]}", "warning"))
-        
+            respuestas.append(self._crear_respuesta(f"❌ Error con GPT2: {str(e)[:100]}", "warning"))
         return respuestas
 
-    # --- Botones ---
     def generar_descripcion(self):
-        """Busca receta completa en API"""
-        if not self.ultima_receta:
-            return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
-        
-        info = self.recetas[self.ultima_receta]
-        termino_busqueda = info.get('busqueda_api', info['nombre'])
-        
+        if not self.ultima_receta: return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
+        info = self.recetas[self.ultima_receta]; termino_busqueda = info.get('busqueda_api', info['nombre'])
         return self.buscar_receta_externa(termino_busqueda)
 
     def generar_pasos(self):
-        """Mismo que descripción (API tiene todo)"""
         return self.generar_descripcion()
 
     def generar_tips(self):
-        """Muestra tips predefinidos (más confiables que GPT2)"""
-        if not self.ultima_receta:
-            return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
-        
+        if not self.ultima_receta: return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
         info = self.recetas[self.ultima_receta]
-        
-        # Usar tips predefinidos
         if 'tips' in info and info['tips']:
             tips_texto = "\n".join(info['tips'])
-            return [self._crear_respuesta(
-                f"💡 TIPS PROFESIONALES para {info['nombre']}:\n\n{tips_texto}", "ia")]
-        
-        # Si no hay tips, intentar con GPT2 (con advertencia)
+            return [self._crear_respuesta(f"💡 TIPS PROFESIONALES para {info['nombre']}:\n\n{tips_texto}", "ia")]
         elif self.gpt2_cargado:
-            respuestas = []
-            respuestas.append(self._crear_respuesta(
-                "⚠️ Generando con GPT2 (puede ser impreciso)...", "warning"))
-            
+            respuestas = []; respuestas.append(self._crear_respuesta("⚠️ Generando con GPT2 (puede ser impreciso)...", "warning"))
             try:
                 prompt = f"Consejos para cocinar {info['nombre']}:\n• Usa ingredientes frescos"
-                
-                resultado = self.generador(
-                    prompt,
-                    max_length=100,
-                    temperature=0.6,
-                    top_p=0.85,
-                    num_return_sequences=1
-                )[0]['generated_text']
-                
-                respuestas.append(self._crear_respuesta(
-                    f"💡 TIPS GENERADOS:\n\n{resultado}\n\n⚠️ Verifica antes de usar", "ia"))
+                resultado = self.generador(prompt, max_length=100, temperature=0.6, top_p=0.85, num_return_sequences=1)[0]['generated_text']
+                respuestas.append(self._crear_respuesta(f"💡 TIPS GENERADOS:\n\n{resultado}\n\n⚠️ Verifica antes de usar", "ia"))
             except Exception as e:
-                respuestas.append(self._crear_respuesta(
-                    f"❌ Error: {str(e)[:50]}", "warning"))
-            
+                respuestas.append(self._crear_respuesta(f"❌ Error: {str(e)[:50]}", "warning"))
             return respuestas
         else:
-            # Fallback a API
             return self.generar_descripcion()
 
     def generar_variaciones(self):
-        """Busca variaciones en API o genera con GPT2"""
-        if not self.ultima_receta:
-            return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
-        
-        # Buscar en API primero
         return self.generar_descripcion()
 
-    # --- Procesador Principal ---
+    # --- Procesador Principal (ACTUALIZADO) ---
     def procesar_mensaje(self, mensaje):
         respuestas = []
         
@@ -545,9 +449,11 @@ class ChatbotLogic:
                 return respuestas, self.saludado
 
         # Análisis PLN
-        pln_info, tokens, lemas, pos_tags = self.analizar_pln(mensaje)
-        respuestas.append(self._crear_respuesta(pln_info, "pln"))
-        
+        # --- CAMBIO: La función analizar_pln ahora devuelve esto ---
+        tokens, lemas, pos_tags = self.analizar_pln(mensaje)
+        # --- CAMBIO: Ocultamos el mensaje de depuración de PLN ---
+        # (La línea original estaba aquí: respuestas.append(self._crear_respuesta(pln_info, "pln")))
+       
         # Sentimiento
         sent, conf = None, 0.5
         if self.analyzer:
@@ -561,37 +467,48 @@ class ChatbotLogic:
         # Detectar receta
         receta, tipo, termino = self.detectar_receta(mensaje)
         
-        # FLUJO 1: Receta interna
+        # FLUJO 1: Receta interna (¡CON LÓGICA DE SENTIMIENTOS!)
         if receta:
             self.ultima_receta = receta
             info = self.recetas[receta]
             
-            if tipo and termino:
-                respuestas.append(self._crear_respuesta(
-                    f"💡 Detectado por {tipo}: '{termino}' → {receta}", "sinonimo"))
+            # (Opcional: mostrar cómo se detectó)
+            # if tipo and termino:
+            #     respuestas.append(self._crear_respuesta(
+            #         f"💡 Detectado por {tipo}: '{termino}' → {receta}", "sinonimo"))
             
-            texto = f"{'¡Buena energía!' if sent == 'POS' else 'Perfecto.'} {info['nombre']}\n\n"
+            # --- CAMBIO: Lógica de Sentimientos ---
+            frase_inicio = "Perfecto." # Default (NEU)
+            if sent == "POS":
+                frase_inicio = f"¡Buena energía! {info['nombre']} será genial."
+            elif sent == "NEG":
+                frase_inicio = f"Entendido. ¡Quizás una {info['nombre']} te suba el ánimo!"
+            # --- FIN CAMBIO ---
+            
+            texto = f"{frase_inicio}\n\n"
             texto += f"📋 Ingredientes básicos:\n • " + "\n • ".join(info['ingredientes'])
-            texto += f"\n\n⏱️ {info['tiempo']} | 📊 {info['dificultad']}"
             texto += "\n\n💡 Usa los botones para ver la receta completa desde TheMealDB"
             
             respuestas.append(self._crear_respuesta(texto, "bot"))
         
-        # FLUJO 2: Búsqueda externa
+        # FLUJO 2: Búsqueda externa (¡CON EXTRACCIÓN DE COMIDA MEJORADA!)
         else:
-            consulta = self.extraer_comida(pos_tags)
+            # --- CAMBIO: Usar la nueva función 'extraer_comida' ---
+            consulta = self.extraer_comida(pos_tags) # ¡Aquí está la magia!
+            
+            # Fallback si 'extraer_comida' no encuentra nada
             if not consulta:
+                # Si 'extraer_comida' falla, usamos tu lógica de fallback original
                 palabras = mensaje.lower().split()
-                # Buscar palabras comunes de comida
                 palabras_comida = ['pasta', 'chicken', 'beef', 'pork', 'fish', 'pizza', 
                                   'soup', 'salad', 'rice', 'bread', 'cake', 'cookie']
                 for palabra in palabras:
                     if palabra in palabras_comida:
                         consulta = palabra
                         break
-                
                 if not consulta:
                     consulta = palabras[-1] if palabras else mensaje
+            # --- FIN CAMBIO ---
             
             respuestas.append(self._crear_respuesta(
                 f"Buscando '{consulta}'...", "bot"))
