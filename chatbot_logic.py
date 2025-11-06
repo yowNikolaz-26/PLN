@@ -392,7 +392,7 @@ class ChatbotLogic:
                     instrucciones_en = receta.get('strInstructions', '')
                     if instrucciones_en:
                         instrucciones_es = self._traducir(instrucciones_en)
-                        pasos_cortos = instrucciones_es[:800] + "..." if len(instrucciones_es) > 800 else instrucciones_es
+                        pasos_cortos = instrucciones_es[:10000] + "..." if len(instrucciones_es) > 10000 else instrucciones_es
                         respuestas.append(self._crear_respuesta(
                             f"📝 PREPARACIÓN:\n{pasos_cortos}", "ia"))
 
