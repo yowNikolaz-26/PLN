@@ -1,10 +1,10 @@
-# chatbot_logic.py - VERSIÓN FINAL (Traducción + PLN Fuerte + Sentimientos)
+# chatbot_logic.py - VERSIÓN OPTIMIZADA (Traducción + PLN + Sentimientos + GPT2 Mejorado)
 import random
 import requests
 import json
 import re
 
-# --- CAMBIO: Importar la nueva librería de traducción ---
+# --- Importar traducción ---
 try:
     from deep_translator import GoogleTranslator
     DEEP_TRANSLATOR_DISPONIBLE = True
@@ -59,20 +59,22 @@ class ChatbotLogic:
         self.api_disponible = True
         print(f"✅ {self.modelo_activo} lista")
         
-        # --- CAMBIO: Crear el objeto traductor ---
+        # Crear el objeto traductor
         if DEEP_TRANSLATOR_DISPONIBLE:
-            # Creamos una instancia del traductor (de inglés a español)
             self.translator = GoogleTranslator(source='en', target='es')
         else:
             self.translator = None
-        # --- FIN CAMBIO ---
         
-        # Cargar GPT2 como backup (opcional)
+        # Cargar GPT2 como backup con configuración optimizada
         self.gpt2_cargado = False
         if TRANSFORMERS_DISPONIBLE:
             try:
                 print("🔄 Cargando GPT2 como backup...")
-                self.generador = pipeline('text-generation', model='datificate/gpt2-small-spanish', device=-1)
+                self.generador = pipeline(
+                    'text-generation', 
+                    model='datificate/gpt2-small-spanish',
+                    device=-1
+                )
                 self.gpt2_cargado = True
                 print("✅ GPT2 cargado como backup")
             except Exception as e:
@@ -89,7 +91,7 @@ class ChatbotLogic:
         else:
             self.analyzer = None
             
-        # Sinónimos (tu diccionario original)
+        # Sinónimos expandidos
         self.sinonimos = {
             'carne guisada': {
                 'sinonimos': ['estofado', 'guiso', 'guisado', 'carne estofada', 'cocido', 'beef stew'],
@@ -113,7 +115,7 @@ class ChatbotLogic:
             }
         }
         
-        # Recetas internas (tu diccionario original)
+        # Recetas internas con tips
         self.recetas = {
             'pasta carbonara': {
                 'nombre': 'Pasta Carbonara',
@@ -182,24 +184,22 @@ class ChatbotLogic:
             }
         }
 
-    # --- CAMBIO: Nueva función helper para traducir ---
+    # --- Función para traducir ---
     def _traducir(self, texto):
         """Traduce un texto si el traductor está disponible"""
         if self.translator and texto:
             try:
-                # Usamos el traductor para pasar de 'en' a 'es'
                 return self.translator.translate(texto)
             except Exception as e:
                 print(f"⚠️ Error de traducción: {e}")
-                return f"[Inglés] {texto}" # Fallback si la traducción falla
-        return texto # Devuelve el original si no hay traductor
+                return f"[Inglés] {texto}"
+        return texto
 
-    # --- PLN (Funciones de PLN, Lematización y POS mejoradas) ---
+    # --- PLN (Funciones mejoradas) ---
     def tokenizar(self, texto):
         return word_tokenize(texto.lower())
 
     def lematizar_simple(self, tokens):
-        # --- CAMBIO: Diccionario de lemas expandido ---
         lemas_dict = {
             'cocino': 'cocinar', 'guisada': 'guisar', 'fideos': 'fideo',
             'tacos': 'taco', 'arepas': 'arepa', 'quiero': 'querer',
@@ -211,14 +211,13 @@ class ChatbotLogic:
         return [lemas_dict.get(token, token) for token in tokens]
 
     def pos_tagging_simple(self, tokens):
-        # --- CAMBIO: Diccionario de POS tagging expandido ---
         pos_dict = {
             # Verbos
             'cocinar': 'VERB', 'guisar': 'VERB', 'preparar': 'VERB', 'querer': 'VERB',
             'dar': 'VERB', 'hacer': 'VERB', 'tener': 'VERB', 'ser': 'VERB', 
             'estar': 'VERB', 'buscar': 'VERB', 'necesitar': 'VERB', 'comer': 'VERB',
             
-            # Sustantivos (Comida principal)
+            # Sustantivos (Comida)
             'carne': 'NOUN', 'pasta': 'NOUN', 'pollo': 'NOUN', 'taco': 'NOUN', 
             'arepa': 'NOUN', 'fideo': 'NOUN', 'pescado': 'NOUN', 'arroz': 'NOUN',
             'sopa': 'NOUN', 'ensalada': 'NOUN', 'pizza': 'NOUN', 'hamburguesa': 'NOUN',
@@ -226,7 +225,7 @@ class ChatbotLogic:
             # Pronombres
             'me': 'PRON', 'te': 'PRON', 'se': 'PRON', 'yo': 'PRON', 'tu': 'PRON', 'él': 'PRON',
             
-            # Determinantes (Artículos)
+            # Determinantes
             'un': 'DET', 'una': 'DET', 'el': 'DET', 'la': 'DET', 'los': 'DET', 'las': 'DET',
             
             # Preposiciones
@@ -235,11 +234,9 @@ class ChatbotLogic:
             # Conjunciones y Adverbios
             'y': 'CONJ', 'o': 'CONJ', 'no': 'ADV', 'como': 'ADV', 'qué': 'PRON'
         }
-        # Cualquier palabra no encontrada (ej. "pescado") será 'NOUN' por defecto
         return [(token, pos_dict.get(token, 'NOUN')) for token in tokens]
 
     def extraer_comida(self, pos_tags):
-        # Extrae SOLO las palabras etiquetadas como 'NOUN'
         comida_tokens = [token for token, tag in pos_tags if tag == 'NOUN']
         return " ".join(comida_tokens) if comida_tokens else ""
 
@@ -289,7 +286,7 @@ class ChatbotLogic:
         respuestas.append(self._crear_respuesta(
             "🥩 Carne → estofado, guiso, cocido\n"
             "🍝 Pasta → espagueti, fideos, carbonara\n"
-            "🐔 Pollo → rostizado, ave, chicken\n"
+            "🍗 Pollo → rostizado, ave, chicken\n"
             "🌮 Tacos → taquitos, mexicano\n"
             "🌽 Arepas → arepa, maíz", "sinonimo"))
         return respuestas
@@ -298,23 +295,36 @@ class ChatbotLogic:
         tokens = self.tokenizar(mensaje)
         lemas = self.lematizar_simple(tokens)
         pos_tags = self.pos_tagging_simple(lemas)
-        # Devolvemos los tokens, lemas y pos_tags para que 'procesar_mensaje' los use
-        return tokens, lemas, pos_tags # Quitamos pln_info
+        return tokens, lemas, pos_tags
 
     # --- API TheMealDB (Con Traducción) ---
     def traducir_a_ingles(self, texto_es):
-        # (Tu función de traducir_a_ingles se queda igual)
         ignorar = ['dar', 'dame', 'quiero', 'preparar', 'hacer', 'cocinar', 'buscar', 'necesito', 'querer', 'como', 'de', 'un', 'una', 'el', 'la', 'los', 'las', 'para', 'con', 'comer', 'por', 'favor']
-        traducciones = {'pollo': 'chicken', 'carne': 'beef', 'res': 'beef', 'cerdo': 'pork', 'pescado': 'fish', 'camarones': 'shrimp', 'arroz': 'rice', 'pasta': 'pasta', 'sopa': 'soup', 'ensalada': 'salad', 'pizza': 'pizza', 'hamburguesa': 'burger', 'tacos': 'tacos', 'sandwich': 'sandwich', 'pan': 'bread', 'pastel': 'cake', 'galletas': 'cookies', 'helado': 'ice cream', 'tarta': 'pie', 'guisado': 'stew', 'estofado': 'stew', 'asado': 'roast', 'frito': 'fried', 'horneado': 'baked', 'a la parrilla': 'grilled', 'postre': 'dessert', 'dulce': 'sweet', 'chocolate': 'chocolate', 'cafe': 'coffee', 'café': 'coffee', 'te': 'tea', 'té': 'tea', 'jugo': 'juice', 'agua': 'water', 'desayuno': 'breakfast', 'almuerzo': 'lunch', 'cena': 'dinner', 'rapido': 'quick', 'rápido': 'quick', 'facil': 'easy', 'fácil': 'easy'}
+        traducciones = {
+            'pollo': 'chicken', 'carne': 'beef', 'res': 'beef', 'cerdo': 'pork', 
+            'pescado': 'fish', 'camarones': 'shrimp', 'arroz': 'rice', 'pasta': 'pasta', 
+            'sopa': 'soup', 'ensalada': 'salad', 'pizza': 'pizza', 'hamburguesa': 'burger', 
+            'tacos': 'tacos', 'sandwich': 'sandwich', 'pan': 'bread', 'pastel': 'cake', 
+            'galletas': 'cookies', 'helado': 'ice cream', 'tarta': 'pie', 'guisado': 'stew', 
+            'estofado': 'stew', 'asado': 'roast', 'frito': 'fried', 'horneado': 'baked', 
+            'a la parrilla': 'grilled', 'postre': 'dessert', 'dulce': 'sweet', 
+            'chocolate': 'chocolate', 'cafe': 'coffee', 'café': 'coffee', 'te': 'tea', 
+            'té': 'tea', 'jugo': 'juice', 'agua': 'water', 'desayuno': 'breakfast', 
+            'almuerzo': 'lunch', 'cena': 'dinner', 'rapido': 'quick', 'rápido': 'quick', 
+            'facil': 'easy', 'fácil': 'easy'
+        }
         texto_lower = texto_es.lower().strip()
-        if texto_lower in traducciones: return traducciones[texto_lower]
-        palabras = texto_lower.split(); palabras_filtradas = [p for p in palabras if p not in ignorar]
-        if not palabras_filtradas: palabras_filtradas = [palabras[-1]] if palabras else [texto_lower]
+        if texto_lower in traducciones: 
+            return traducciones[texto_lower]
+        palabras = texto_lower.split()
+        palabras_filtradas = [p for p in palabras if p not in ignorar]
+        if not palabras_filtradas: 
+            palabras_filtradas = [palabras[-1]] if palabras else [texto_lower]
         palabras_traducidas = [traducciones.get(p, p) for p in palabras_filtradas]
         return ' '.join(palabras_traducidas)
     
     def buscar_receta_externa(self, consulta):
-        """Busca en TheMealDB API y AHORA TRADUCE los resultados"""
+        """Busca en TheMealDB API y traduce los resultados"""
         respuestas = []
         
         consulta_en = self.traducir_a_ingles(consulta)
@@ -323,34 +333,48 @@ class ChatbotLogic:
             respuestas.append(self._crear_respuesta(
                 f"🌐 Traduciendo '{consulta}' → '{consulta_en}'...", "info"))
         
-        # (Lógica de búsqueda alternativa sin cambios)
+        # Búsqueda con alternativas
         terminos_busqueda = [consulta_en]
         palabra_principal = consulta_en.split()[0] if consulta_en else consulta
-        alternativas_api = {'beef stew': ['beef', 'stew'], 'beef': ['beef'], 'chicken roast': ['chicken', 'roast chicken'], 'pork': ['pork'], 'fish': ['fish', 'salmon'], 'soup': ['soup'], 'stew': ['beef', 'stew'], 'roast': ['chicken', 'beef']}
-        if consulta_en in alternativas_api: terminos_busqueda.extend(alternativas_api[consulta_en])
-        elif palabra_principal in alternativas_api: terminos_busqueda.extend(alternativas_api[palabra_principal])
+        alternativas_api = {
+            'beef stew': ['beef', 'stew'], 
+            'beef': ['beef'], 
+            'chicken roast': ['chicken', 'roast chicken'], 
+            'pork': ['pork'], 
+            'fish': ['fish', 'salmon'], 
+            'soup': ['soup'], 
+            'stew': ['beef', 'stew'], 
+            'roast': ['chicken', 'beef']
+        }
+        if consulta_en in alternativas_api: 
+            terminos_busqueda.extend(alternativas_api[consulta_en])
+        elif palabra_principal in alternativas_api: 
+            terminos_busqueda.extend(alternativas_api[palabra_principal])
         
         for termino in terminos_busqueda:
             try:
                 url = f"https://www.themealdb.com/api/json/v1/1/search.php?s={termino}"
                 print(f"🔗 Intentando: {url}")
-                response = requests.get(url, timeout=10); response.raise_for_status(); data = response.json()
+                response = requests.get(url, timeout=10)
+                response.raise_for_status()
+                data = response.json()
                 
                 if data and data.get('meals'):
                     if termino != consulta_en:
-                        respuestas.append(self._crear_respuesta(f"✅ Encontré resultados buscando '{termino}'", "info"))
+                        respuestas.append(self._crear_respuesta(
+                            f"✅ Encontré resultados buscando '{termino}'", "info"))
                     
                     receta = data['meals'][0]
                     
-                    # --- CAMBIO: Traducir todos los campos ---
+                    # Traducir campos principales
                     nombre = self._traducir(receta.get('strMeal', 'Receta encontrada'))
                     categoria = self._traducir(receta.get('strCategory', 'N/A'))
                     area = self._traducir(receta.get('strArea', 'N/A'))
                     
                     respuestas.append(self._crear_respuesta(
-                        f"✅ {nombre}\n📂 {categoria} | 🌍 {area}", "ia"))
+                        f"✅ {nombre}\n📂 {categoria} | 🌎 {area}", "ia"))
                     
-                    # Ingredientes (traducidos en bloque)
+                    # Ingredientes traducidos
                     ingredientes_en_lista = []
                     for i in range(1, 21):
                         ing = receta.get(f'strIngredient{i}')
@@ -364,69 +388,115 @@ class ChatbotLogic:
                         respuestas.append(self._crear_respuesta(
                             "📋 INGREDIENTES:\n" + ingredientes_es_texto, "ia"))
                     
-                    # Pasos (traducidos)
+                    # Instrucciones traducidas
                     instrucciones_en = receta.get('strInstructions', '')
                     if instrucciones_en:
                         instrucciones_es = self._traducir(instrucciones_en)
                         pasos_cortos = instrucciones_es[:800] + "..." if len(instrucciones_es) > 800 else instrucciones_es
                         respuestas.append(self._crear_respuesta(
                             f"📝 PREPARACIÓN:\n{pasos_cortos}", "ia"))
-                    # --- FIN CAMBIO ---
 
-                    imagen = receta.get('strMealThumb');
+                    imagen = receta.get('strMealThumb')
                     if imagen:
-                        respuestas.append(self._crear_respuesta(f"🖼️ Imagen: {imagen}", "info"))
+                        respuestas.append(self._crear_respuesta(
+                            f"🖼️ Imagen: {imagen}", "info"))
                     
                     return respuestas
                 
             except Exception as e:
-                print(f"❌ Error con '{termino}': {e}"); continue
+                print(f"❌ Error con '{termino}': {e}")
+                continue
         
-        # (Fallback si no se encuentra nada)
-        respuestas.append(self._crear_respuesta(f"⚠️ No encontré '{consulta_en}' en TheMealDB.", "warning"))
-        respuestas.append(self._crear_respuesta("💡 Palabras que funcionan bien:\n • chicken, beef, pork, fish, salmon\n • pasta, pizza, rice, soup\n • cake, cookies, bread, pie", "info"))
+        # Fallback
+        respuestas.append(self._crear_respuesta(
+            f"⚠️ No encontré '{consulta_en}' en TheMealDB.", "warning"))
+        respuestas.append(self._crear_respuesta(
+            "💡 Palabras que funcionan bien:\n • chicken, beef, pork, fish, salmon\n • pasta, pizza, rice, soup\n • cake, cookies, bread, pie", "info"))
         
         if self.gpt2_cargado:
-            respuestas.append(self._crear_respuesta("🤖 Generando con GPT2 como alternativa...", "info"))
+            respuestas.append(self._crear_respuesta(
+                "🤖 Generando con IA como alternativa...", "info"))
             respuestas.extend(self.generar_con_gpt2(consulta))
         
         return respuestas
 
-    # (generar_con_gpt2 y botones de generación se quedan igual)
+    # --- GPT2 con Prompts Mejorados ---
     def generar_con_gpt2(self, consulta):
         respuestas = []
-        respuestas.append(self._crear_respuesta("🤖 Usando GPT2 para generar información básica...", "info"))
+        respuestas.append(self._crear_respuesta(
+            "🤖 Generando información básica...", "info"))
         try:
-            prompt = f"Receta de {consulta}. Ingredientes necesarios:\n• Primer ingrediente:"
-            resultado = self.generador(prompt, max_length=100, temperature=0.7, top_p=0.85, do_sample=True, num_return_sequences=1)[0]['generated_text']
-            respuestas.append(self._crear_respuesta("⚠️ GPT2 puede generar información imprecisa. Verifica antes de cocinar.", "warning"))
-            respuestas.append(self._crear_respuesta(f"📖 Información generada:\n\n{resultado}", "ia"))
+            # Prompt más específico y estructurado
+            prompt = f"Para preparar {consulta}, necesitas estos ingredientes básicos: 1) "
+            resultado = self.generador(
+                prompt, 
+                max_length=80,  # Más corto = menos incoherencia
+                temperature=0.4,  # Menos creatividad = más coherente
+                top_p=0.9,
+                do_sample=True,
+                num_return_sequences=1,
+                pad_token_id=50256  # Evita warnings
+            )[0]['generated_text']
+            
+            # Limpiar el resultado
+            resultado = resultado.replace(prompt, "").strip()
+            if len(resultado) < 10:
+                raise Exception("Respuesta muy corta")
+            
+            respuestas.append(self._crear_respuesta(
+                "⚠️ Información generada por IA - Verifica antes de cocinar", "warning"))
+            respuestas.append(self._crear_respuesta(
+                f"📖 Sugerencia:\n\n• {resultado}", "ia"))
         except Exception as e:
-            respuestas.append(self._crear_respuesta(f"❌ Error con GPT2: {str(e)[:100]}", "warning"))
+            respuestas.append(self._crear_respuesta(
+                f"⚠️ No pude generar información. Intenta buscar recetas más comunes como:\n"
+                "• Pollo asado\n• Pasta carbonara\n• Carne guisada\n• Tacos\n• Arepas", 
+                "warning"))
         return respuestas
 
     def generar_descripcion(self):
-        if not self.ultima_receta: return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
-        info = self.recetas[self.ultima_receta]; termino_busqueda = info.get('busqueda_api', info['nombre'])
+        if not self.ultima_receta: 
+            return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
+        info = self.recetas[self.ultima_receta]
+        termino_busqueda = info.get('busqueda_api', info['nombre'])
         return self.buscar_receta_externa(termino_busqueda)
 
     def generar_pasos(self):
         return self.generar_descripcion()
 
     def generar_tips(self):
-        if not self.ultima_receta: return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
+        if not self.ultima_receta: 
+            return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
         info = self.recetas[self.ultima_receta]
+        
         if 'tips' in info and info['tips']:
             tips_texto = "\n".join(info['tips'])
-            return [self._crear_respuesta(f"💡 TIPS PROFESIONALES para {info['nombre']}:\n\n{tips_texto}", "ia")]
+            return [self._crear_respuesta(
+                f"💡 TIPS PROFESIONALES para {info['nombre']}:\n\n{tips_texto}", "ia")]
         elif self.gpt2_cargado:
-            respuestas = []; respuestas.append(self._crear_respuesta("⚠️ Generando con GPT2 (puede ser impreciso)...", "warning"))
+            respuestas = []
+            respuestas.append(self._crear_respuesta(
+                "⚠️ Generando consejos (puede ser impreciso)...", "warning"))
             try:
-                prompt = f"Consejos para cocinar {info['nombre']}:\n• Usa ingredientes frescos"
-                resultado = self.generador(prompt, max_length=100, temperature=0.6, top_p=0.85, num_return_sequences=1)[0]['generated_text']
-                respuestas.append(self._crear_respuesta(f"💡 TIPS GENERADOS:\n\n{resultado}\n\n⚠️ Verifica antes de usar", "ia"))
+                prompt = f"Consejos para cocinar {info['nombre']}:\n1. "
+                resultado = self.generador(
+                    prompt, 
+                    max_length=70,
+                    temperature=0.5,
+                    top_p=0.9,
+                    num_return_sequences=1,
+                    pad_token_id=50256
+                )[0]['generated_text']
+                
+                resultado = resultado.replace(prompt, "").strip()
+                if len(resultado) < 10:
+                    raise Exception("Respuesta muy corta")
+                
+                respuestas.append(self._crear_respuesta(
+                    f"💡 TIPS GENERADOS:\n\n• {resultado}\n\n⚠️ Verifica la información", "ia"))
             except Exception as e:
-                respuestas.append(self._crear_respuesta(f"❌ Error: {str(e)[:50]}", "warning"))
+                respuestas.append(self._crear_respuesta(
+                    "⚠️ No pude generar tips. Usa los botones para ver la receta completa.", "warning"))
             return respuestas
         else:
             return self.generar_descripcion()
@@ -434,13 +504,13 @@ class ChatbotLogic:
     def generar_variaciones(self):
         return self.generar_descripcion()
 
-    # --- Procesador Principal (ACTUALIZADO) ---
+    # --- Procesador Principal ---
     def procesar_mensaje(self, mensaje):
         respuestas = []
         
         # Verificar saludo
         if not self.saludado:
-            if any(saludo in mensaje.lower() for saludo in ['hola', 'hi', 'hey', 'buenas']):
+            if any(saludo in mensaje.lower() for saludo in ['hola', 'hi', 'hey', 'buenas', 'oe','ey', 'saludos', 'buen día', 'buen dia','ole']):
                 respuestas.extend(self.habilitar_funcionalidades())
                 return respuestas, self.saludado
             else:
@@ -449,10 +519,7 @@ class ChatbotLogic:
                 return respuestas, self.saludado
 
         # Análisis PLN
-        # --- CAMBIO: La función analizar_pln ahora devuelve esto ---
         tokens, lemas, pos_tags = self.analizar_pln(mensaje)
-        # --- CAMBIO: Ocultamos el mensaje de depuración de PLN ---
-        # (La línea original estaba aquí: respuestas.append(self._crear_respuesta(pln_info, "pln")))
        
         # Sentimiento
         sent, conf = None, 0.5
@@ -467,23 +534,17 @@ class ChatbotLogic:
         # Detectar receta
         receta, tipo, termino = self.detectar_receta(mensaje)
         
-        # FLUJO 1: Receta interna (¡CON LÓGICA DE SENTIMIENTOS!)
+        # FLUJO 1: Receta interna
         if receta:
             self.ultima_receta = receta
             info = self.recetas[receta]
             
-            # (Opcional: mostrar cómo se detectó)
-            # if tipo and termino:
-            #     respuestas.append(self._crear_respuesta(
-            #         f"💡 Detectado por {tipo}: '{termino}' → {receta}", "sinonimo"))
-            
-            # --- CAMBIO: Lógica de Sentimientos ---
-            frase_inicio = "Perfecto." # Default (NEU)
+            # Respuesta según sentimiento
+            frase_inicio = "Perfecto."
             if sent == "POS":
                 frase_inicio = f"¡Buena energía! {info['nombre']} será genial."
             elif sent == "NEG":
                 frase_inicio = f"Entendido. ¡Quizás una {info['nombre']} te suba el ánimo!"
-            # --- FIN CAMBIO ---
             
             texto = f"{frase_inicio}\n\n"
             texto += f"📋 Ingredientes básicos:\n • " + "\n • ".join(info['ingredientes'])
@@ -491,14 +552,12 @@ class ChatbotLogic:
             
             respuestas.append(self._crear_respuesta(texto, "bot"))
         
-        # FLUJO 2: Búsqueda externa (¡CON EXTRACCIÓN DE COMIDA MEJORADA!)
+        # FLUJO 2: Búsqueda externa
         else:
-            # --- CAMBIO: Usar la nueva función 'extraer_comida' ---
-            consulta = self.extraer_comida(pos_tags) # ¡Aquí está la magia!
+            consulta = self.extraer_comida(pos_tags)
             
-            # Fallback si 'extraer_comida' no encuentra nada
+            # Fallback si no se encuentra comida
             if not consulta:
-                # Si 'extraer_comida' falla, usamos tu lógica de fallback original
                 palabras = mensaje.lower().split()
                 palabras_comida = ['pasta', 'chicken', 'beef', 'pork', 'fish', 'pizza', 
                                   'soup', 'salad', 'rice', 'bread', 'cake', 'cookie']
@@ -508,7 +567,6 @@ class ChatbotLogic:
                         break
                 if not consulta:
                     consulta = palabras[-1] if palabras else mensaje
-            # --- FIN CAMBIO ---
             
             respuestas.append(self._crear_respuesta(
                 f"Buscando '{consulta}'...", "bot"))
