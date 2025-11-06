@@ -1,4 +1,4 @@
-# chatbot_logic.py - VERSIÓN OPTIMIZADA (Traducción + PLN + Sentimientos + GPT2 Mejorado)
+# chatbot_logic.py - VERSIÓN CORREGIDA (Sintaxis + Categorías + Traducción)
 import random
 import requests
 import json
@@ -65,16 +65,12 @@ class ChatbotLogic:
         else:
             self.translator = None
         
-        # Cargar GPT2 como backup con configuración optimizada
+        # Cargar GPT2 como backup (opcional)
         self.gpt2_cargado = False
         if TRANSFORMERS_DISPONIBLE:
             try:
                 print("🔄 Cargando GPT2 como backup...")
-                self.generador = pipeline(
-                    'text-generation', 
-                    model='datificate/gpt2-small-spanish',
-                    device=-1
-                )
+                self.generador = pipeline('text-generation', model='datificate/gpt2-small-spanish', device=-1)
                 self.gpt2_cargado = True
                 print("✅ GPT2 cargado como backup")
             except Exception as e:
@@ -91,7 +87,17 @@ class ChatbotLogic:
         else:
             self.analyzer = None
             
-        # Sinónimos expandidos
+        # --- Diccionario de Categorías ---
+        self.categorias = {
+            'italiana': "¡Claro! La comida italiana es famosa por sus pastas. ¿Qué tal una 'pasta carbonara'?",
+            'italiano': "¡Claro! La comida italiana es famosa por sus pastas. ¿Qué tal una 'pasta carbonara'?",
+            'mexicana': "¡Entendido! La comida mexicana es deliciosa. Te recomiendo unos 'tacos al pastor'.",
+            'mexicano': "¡Entendido! La comida mexicana es deliciosa. Te recomiendo unos 'tacos al pastor'.",
+            'colombiana': "¡Perfecto! ¿Qué tal unas 'arepas colombianas'?",
+            'colombiano': "¡Perfecto! ¿Qué tal unas 'arepas colombianas'?"
+        }
+            
+        # Sinónimos
         self.sinonimos = {
             'carne guisada': {
                 'sinonimos': ['estofado', 'guiso', 'guisado', 'carne estofada', 'cocido', 'beef stew'],
@@ -115,7 +121,7 @@ class ChatbotLogic:
             }
         }
         
-        # Recetas internas con tips
+        # Recetas internas
         self.recetas = {
             'pasta carbonara': {
                 'nombre': 'Pasta Carbonara',
@@ -262,6 +268,15 @@ class ChatbotLogic:
         except:
             return None, 0.5
 
+    # --- Nueva función para Categorías ---
+    def detectar_categoria(self, mensaje):
+        """Busca categorías de comida predefinidas."""
+        mensaje_lower = mensaje.lower()
+        for palabra_clave, respuesta in self.categorias.items():
+            if re.search(r'\b' + re.escape(palabra_clave) + r'\b', mensaje_lower):
+                return respuesta # Devuelve la respuesta predefinida
+        return None
+
     # --- Helpers ---
     def _crear_respuesta(self, texto, tipo="bot"):
         return {"type": tipo, "text": texto.strip()}
@@ -388,7 +403,7 @@ class ChatbotLogic:
                         respuestas.append(self._crear_respuesta(
                             "📋 INGREDIENTES:\n" + ingredientes_es_texto, "ia"))
                     
-                    # Instrucciones traducidas
+                    # Instrucciones traducidas (¡AQUÍ ESTÁ TU LÍMITE DE 10000!)
                     instrucciones_en = receta.get('strInstructions', '')
                     if instrucciones_en:
                         instrucciones_es = self._traducir(instrucciones_en)
@@ -420,25 +435,23 @@ class ChatbotLogic:
         
         return respuestas
 
-    # --- GPT2 con Prompts Mejorados ---
+    # --- GPT2 con Prompts Mejorados (SINTAXIS CORREGIDA) ---
     def generar_con_gpt2(self, consulta):
         respuestas = []
         respuestas.append(self._crear_respuesta(
             "🤖 Generando información básica...", "info"))
         try:
-            # Prompt más específico y estructurado
             prompt = f"Para preparar {consulta}, necesitas estos ingredientes básicos: 1) "
             resultado = self.generador(
                 prompt, 
-                max_length=80,  # Más corto = menos incoherencia
-                temperature=0.4,  # Menos creatividad = más coherente
+                max_length=80,
+                temperature=0.4,
                 top_p=0.9,
                 do_sample=True,
                 num_return_sequences=1,
-                pad_token_id=50256  # Evita warnings
+                pad_token_id=50256
             )[0]['generated_text']
             
-            # Limpiar el resultado
             resultado = resultado.replace(prompt, "").strip()
             if len(resultado) < 10:
                 raise Exception("Respuesta muy corta")
@@ -454,6 +467,7 @@ class ChatbotLogic:
                 "warning"))
         return respuestas
 
+    # --- Botones (SINTAXIS CORREGIDA) ---
     def generar_descripcion(self):
         if not self.ultima_receta: 
             return [self._crear_respuesta("⚠️ Primero selecciona una receta", "warning")]
@@ -504,7 +518,7 @@ class ChatbotLogic:
     def generar_variaciones(self):
         return self.generar_descripcion()
 
-    # --- Procesador Principal ---
+    # --- Procesador Principal (CON FLUJO 0 DE CATEGORÍAS) ---
     def procesar_mensaje(self, mensaje):
         respuestas = []
         
@@ -531,6 +545,13 @@ class ChatbotLogic:
                 respuestas.append(self._crear_respuesta(
                     f"🎭 {emojis.get(sent, '😐')} {sent} ({conf:.0%})", "sentiment"))
         
+        # --- FLUJO 0: Detectar categoría general (ej. "italiana") ---
+        respuesta_categoria = self.detectar_categoria(mensaje)
+        if respuesta_categoria:
+            respuestas.append(self._crear_respuesta(respuesta_categoria, "bot"))
+            # Si encontramos categoría, terminamos aquí
+            return respuestas, self.saludado
+            
         # Detectar receta
         receta, tipo, termino = self.detectar_receta(mensaje)
         
