@@ -38,7 +38,7 @@ except ImportError:
     SENTIMIENTOS_DISPONIBLE = False
     print("⚠️ Pysentimiento no disponible")
 
-# --- ELIMINADO Importación GPT2 ---
+
 
 
 class ChatbotLogic:
@@ -49,9 +49,9 @@ class ChatbotLogic:
         self.ultima_receta = None
         self.ultima_busqueda_api = None # <-- AÑADIDO: Memoria para búsquedas externas
         
-        # --- NUEVO: Integración con Spoonacular ---
+        # --- Integración con Spoonacular ---
         # ¡API Key del usuario insertada!
-        self.SPOONACULAR_API_KEY = "83b3661ad8d34bf5befa1c09a1f8a4ba" # <-- API Key LISTA
+        self.SPOONACULAR_API_KEY = "83b3661ad8d34bf5befa1c09a1f8a4ba" #
         
         if not self.SPOONACULAR_API_KEY or self.SPOONACULAR_API_KEY == "TU_API_KEY_VA_AQUI":
             print("="*50)
